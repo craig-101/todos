@@ -1,0 +1,230 @@
+:root {
+  --bg: #0f1115;
+  --surface: #181b22;
+  --surface-2: #1f232c;
+  --border: #2a2f3a;
+  --text: #e7e9ee;
+  --muted: #8a90a0;
+  --accent: #7c5cff;
+  --accent-hover: #6a4cf0;
+  --danger: #ef4f5b;
+  --success: #41c98a;
+  --radius: 12px;
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 20% -10%, #20243000 0%, var(--bg) 60%) , var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+h1 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+
+.muted { color: var(--muted); }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: rgba(15,17,21,0.7);
+  backdrop-filter: blur(10px);
+}
+
+.container {
+  max-width: 640px;
+  margin: 32px auto;
+  padding: 0 20px;
+}
+
+.add-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.add-form input {
+  flex: 1;
+}
+
+input[type="text"], input[type="password"] {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 15px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124,92,255,0.18);
+}
+
+button {
+  padding: 12px 18px;
+  background: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: white;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, transform 80ms ease;
+}
+
+button:hover { background: var(--accent-hover); }
+button:active { transform: translateY(1px); }
+
+button.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--muted);
+}
+button.ghost:hover { color: var(--text); background: var(--surface); }
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: background 120ms ease, transform 80ms ease;
+}
+
+.item:hover { background: var(--surface-2); }
+
+.item.done .text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.check {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid #6b7388;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #0b0d12;
+  padding: 0;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.check:hover {
+  border-color: var(--accent);
+}
+
+.check.checked {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.check.checked::after {
+  content: "";
+  width: 6px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.text {
+  flex: 1;
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.delete {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  padding: 6px 10px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.delete:hover {
+  background: rgba(239,79,91,0.1);
+  color: var(--danger);
+}
+
+.empty {
+  text-align: center;
+  margin-top: 40px;
+}
+
+.error {
+  color: var(--danger);
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+/* Login */
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow);
+}
+
+.card h1 {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.card label {
+  display: block;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.card label span { display: block; margin-bottom: 6px; }
+
+.card button {
+  width: 100%;
+  margin-top: 20px;
+}
+
+@media (max-width: 480px) {
+  .container { margin-top: 20px; }
+  .add-form { flex-direction: column; }
+  .add-form button { width: 100%; }
+}

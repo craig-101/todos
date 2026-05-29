@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="centered">
+  <main class="card">
+    <h1>todos</h1>
+    <p class="muted">Sign in to continue.</p>
+    <form method="post" action="/login" autocomplete="on">
+      <label>
+        <span>Username</span>
+        <input name="username" type="text" required autofocus />
+      </label>
+      <label>
+        <span>Password</span>
+        <input name="password" type="password" required />
+      </label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p id="err" class="error" hidden>Invalid credentials.</p>
+  </main>
+  <script>
+    if (new URLSearchParams(location.search).get('error')) {
+      document.getElementById('err').hidden = false;
+    }
+  </script>
+</body>
+</html>
