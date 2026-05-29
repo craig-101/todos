@@ -22,10 +22,20 @@
   </header>
 
   <main class="container">
+    <nav class="tabs">
+      <button class="tab active" data-view="active">Active</button>
+      <button class="tab" data-view="trash">Trash</button>
+    </nav>
+
     <form id="add-form" class="add-form">
       <input id="new-text" type="text" placeholder="What needs doing?" maxlength="500" autocomplete="off" required />
       <button type="submit">Add</button>
     </form>
+
+    <div id="trash-toolbar" class="trash-toolbar" hidden>
+      <span class="muted">Items in trash can be restored.</span>
+      <button id="empty-trash" class="ghost danger-ghost" type="button">Empty trash</button>
+    </div>
 
     <ul id="list" class="list"></ul>
     <p id="empty" class="muted empty" hidden>Nothing here yet.</p>

@@ -23,7 +23,12 @@ if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]');
 
 function loadTodos() {
   try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const todos = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    return todos.map(t => ({
+      parentId: null,
+      deletedAt: null,
+      ...t,
+    }));
   } catch {
     return [];
   }
@@ -81,7 +86,14 @@ app.get('/', requireAuth, (req, res) => {
 });
 
 app.get('/api/todos', requireAuth, (req, res) => {
-  res.json(loadTodos());
+  res.json(loadTodos().filter(t => !t.deletedAt));
+});
+
+app.get('/api/trash', requireAuth, (req, res) => {
+  const trashed = loadTodos()
+    .filter(t => t.deletedAt)
+    .sort((a, b) => b.deletedAt - a.deletedAt);
+  res.json(trashed);
 });
 
 app.post('/api/todos', requireAuth, (req, res) => {
@@ -89,11 +101,20 @@ app.post('/api/todos', requireAuth, (req, res) => {
   if (!text) return res.status(400).json({ error: 'text required' });
   if (text.length > 500) return res.status(400).json({ error: 'too long' });
   const todos = loadTodos();
+  let parentId = null;
+  if (req.body.parentId) {
+    const parent = todos.find(t => t.id === req.body.parentId && !t.deletedAt);
+    if (!parent) return res.status(400).json({ error: 'invalid parentId' });
+    if (parent.parentId) return res.status(400).json({ error: 'only one level of nesting' });
+    parentId = parent.id;
+  }
   const todo = {
     id: crypto.randomUUID(),
     text,
     done: false,
+    parentId,
     createdAt: Date.now(),
+    deletedAt: null,
   };
   todos.unshift(todo);
   saveTodos(todos);
@@ -102,7 +123,7 @@ app.post('/api/todos', requireAuth, (req, res) => {
 
 app.patch('/api/todos/:id', requireAuth, (req, res) => {
   const todos = loadTodos();
-  const todo = todos.find(t => t.id === req.params.id);
+  const todo = todos.find(t => t.id === req.params.id && !t.deletedAt);
   if (!todo) return res.status(404).json({ error: 'not found' });
   if (typeof req.body.done === 'boolean') todo.done = req.body.done;
   if (typeof req.body.text === 'string') {
@@ -115,9 +136,38 @@ app.patch('/api/todos/:id', requireAuth, (req, res) => {
 
 app.delete('/api/todos/:id', requireAuth, (req, res) => {
   const todos = loadTodos();
+  const todo = todos.find(t => t.id === req.params.id && !t.deletedAt);
+  if (!todo) return res.status(404).json({ error: 'not found' });
+  const now = Date.now();
+  todo.deletedAt = now;
+  for (const t of todos) {
+    if (t.parentId === todo.id && !t.deletedAt) t.deletedAt = now;
+  }
+  saveTodos(todos);
+  res.status(204).end();
+});
+
+app.post('/api/todos/:id/restore', requireAuth, (req, res) => {
+  const todos = loadTodos();
+  const todo = todos.find(t => t.id === req.params.id && t.deletedAt);
+  if (!todo) return res.status(404).json({ error: 'not found' });
+  todo.deletedAt = null;
+  saveTodos(todos);
+  res.json(todo);
+});
+
+app.delete('/api/trash/:id', requireAuth, (req, res) => {
+  const todos = loadTodos();
+  const todo = todos.find(t => t.id === req.params.id && t.deletedAt);
+  if (!todo) return res.status(404).json({ error: 'not found' });
   const next = todos.filter(t => t.id !== req.params.id);
-  if (next.length === todos.length) return res.status(404).json({ error: 'not found' });
   saveTodos(next);
+  res.status(204).end();
+});
+
+app.delete('/api/trash', requireAuth, (req, res) => {
+  const todos = loadTodos();
+  saveTodos(todos.filter(t => !t.deletedAt));
   res.status(204).end();
 });
 
