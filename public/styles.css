@@ -112,7 +112,8 @@ h1 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%238a90a0' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat;
   background-position: right 10px center;
-  padding-right: 32px;
+  background-size: 12px 12px;
+  padding-right: 30px;
 }
 
 .select:focus {
