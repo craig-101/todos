@@ -158,6 +158,31 @@ button.ghost:hover { color: var(--text); background: var(--surface); }
   flex: 1;
   font-size: 15px;
   word-break: break-word;
+  cursor: text;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 4px;
+  transition: background 120ms ease;
+}
+
+.text:hover {
+  background: rgba(124,92,255,0.08);
+}
+
+.edit-input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+}
+
+.edit-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124,92,255,0.18);
 }
 
 .delete {

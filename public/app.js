@@ -33,6 +33,8 @@ function render(todos) {
     const text = document.createElement('span');
     text.className = 'text';
     text.textContent = t.text;
+    text.title = 'Click to edit';
+    text.addEventListener('click', () => startEdit(li, t));
 
     const del = document.createElement('button');
     del.className = 'delete';
@@ -68,6 +70,45 @@ async function toggle(t) {
 async function remove(id) {
   await api(`/api/todos/${id}`, { method: 'DELETE' });
   await load();
+}
+
+async function saveText(id, text) {
+  await api(`/api/todos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ text }),
+  });
+  await load();
+}
+
+function startEdit(li, t) {
+  if (li.querySelector('.edit-input')) return;
+  const textEl = li.querySelector('.text');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'edit-input';
+  input.value = t.text;
+  input.maxLength = 500;
+  textEl.replaceWith(input);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+
+  let settled = false;
+  const finish = async (commit) => {
+    if (settled) return;
+    settled = true;
+    const next = input.value.trim();
+    if (commit && next && next !== t.text) {
+      await saveText(t.id, next);
+    } else {
+      await load();
+    }
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
 }
 
 form.addEventListener('submit', async (e) => {
