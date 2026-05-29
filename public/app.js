@@ -4,14 +4,51 @@ const form = document.getElementById('add-form');
 const input = document.getElementById('new-text');
 const categorySelect = document.getElementById('new-category');
 const filtersEl = document.getElementById('filters');
+const toolbarEl = document.getElementById('toolbar');
+const searchEl = document.getElementById('search');
+const hideDoneEl = document.getElementById('hide-done');
 const tabs = document.querySelectorAll('.tab');
 const trashToolbar = document.getElementById('trash-toolbar');
 const emptyTrashBtn = document.getElementById('empty-trash');
+const toastEl = document.getElementById('toast');
+const toastMsg = document.getElementById('toast-msg');
+const toastAction = document.getElementById('toast-action');
 
 let view = 'active';
 let filter = 'all';
+let search = '';
+let hideDone = localStorage.getItem('hideDone') === '1';
+hideDoneEl.checked = hideDone;
+
+let activeTodos = [];
+let trashTodos = [];
 
 const CATEGORY_LABELS = { home: 'Home', work: 'Work' };
+
+function todayISO() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function formatDue(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((date - today) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  if (diffDays === -1) return 'Yesterday';
+  if (diffDays > 1 && diffDays < 7) return date.toLocaleDateString(undefined, { weekday: 'short' });
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function isOverdue(t) {
+  return t.dueDate && !t.done && t.dueDate < todayISO();
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -27,33 +64,53 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-function renderActive(todos) {
-  const byParent = new Map();
-  for (const t of todos) {
-    const key = t.parentId || null;
-    if (!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key).push(t);
-  }
-  const top = byParent.get(null) || [];
-  // Children whose parent is missing — render as top-level (orphans).
-  const validIds = new Set(todos.map(t => t.id));
-  for (const t of todos) {
-    if (t.parentId && !validIds.has(t.parentId) && !top.includes(t)) top.push(t);
+function matchesSearch(t) {
+  if (!search) return true;
+  return t.text.toLowerCase().includes(search);
+}
+
+function visibleActive() {
+  const top = activeTodos.filter(t => !t.parentId);
+  const subs = activeTodos.filter(t => t.parentId);
+  const subsByParent = new Map();
+  for (const s of subs) {
+    if (!subsByParent.has(s.parentId)) subsByParent.set(s.parentId, []);
+    subsByParent.get(s.parentId).push(s);
   }
 
+  const result = [];
+  for (const p of top) {
+    if (filter !== 'all' && p.category !== filter) continue;
+    const children = subsByParent.get(p.id) || [];
+    const parentMatchesSearch = matchesSearch(p);
+    const matchingChildren = children.filter(matchesSearch);
+    if (search && !parentMatchesSearch && matchingChildren.length === 0) continue;
+    const visibleChildren = search ? matchingChildren : children;
+    const showParent = !hideDone || !p.done;
+    if (showParent) result.push({ todo: p, isSub: false });
+    for (const c of visibleChildren) {
+      if (hideDone && c.done) continue;
+      result.push({ todo: c, isSub: true });
+    }
+  }
+  return result;
+}
+
+function renderActive() {
+  const items = visibleActive();
   listEl.innerHTML = '';
-  emptyEl.hidden = top.length > 0;
-
-  for (const t of top) {
-    listEl.append(renderItem(t, false));
-    const subs = byParent.get(t.id) || [];
-    for (const s of subs) listEl.append(renderItem(s, true));
+  emptyEl.hidden = items.length > 0;
+  emptyEl.textContent = activeTodos.length === 0
+    ? 'Nothing here yet.'
+    : 'No tasks match.';
+  for (const { todo, isSub } of items) {
+    listEl.append(renderItem(todo, isSub));
   }
 }
 
 function renderItem(t, isSub) {
   const li = document.createElement('li');
-  li.className = 'item' + (t.done ? ' done' : '') + (isSub ? ' sub' : '');
+  li.className = 'item' + (t.done ? ' done' : '') + (isSub ? ' sub' : '') + (isOverdue(t) ? ' overdue' : '');
   li.dataset.id = t.id;
 
   const check = document.createElement('button');
@@ -68,6 +125,35 @@ function renderItem(t, isSub) {
   text.addEventListener('click', () => startEdit(li, t));
 
   li.append(check, text);
+
+  // Due date
+  const due = document.createElement('label');
+  due.className = 'due' + (t.dueDate ? ' set' : '') + (isOverdue(t) ? ' overdue' : '');
+  const dueInput = document.createElement('input');
+  dueInput.type = 'date';
+  dueInput.value = t.dueDate || '';
+  dueInput.title = t.dueDate ? 'Change due date' : 'Set due date';
+  dueInput.addEventListener('change', async () => {
+    await setDue(t.id, dueInput.value || null);
+  });
+  const dueLabel = document.createElement('span');
+  dueLabel.className = 'due-label';
+  dueLabel.textContent = t.dueDate ? formatDue(t.dueDate) : 'Due';
+  due.append(dueInput, dueLabel);
+  if (t.dueDate) {
+    const clear = document.createElement('button');
+    clear.className = 'due-clear';
+    clear.type = 'button';
+    clear.title = 'Clear due date';
+    clear.textContent = '×';
+    clear.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDue(t.id, null);
+    });
+    due.append(clear);
+  }
+  li.append(due);
 
   if (!isSub && t.category) {
     const badge = document.createElement('button');
@@ -91,18 +177,19 @@ function renderItem(t, isSub) {
   const del = document.createElement('button');
   del.className = 'delete';
   del.textContent = 'Delete';
-  del.addEventListener('click', () => remove(t.id));
+  del.addEventListener('click', () => remove(t));
   li.append(del);
 
   return li;
 }
 
-function renderTrash(todos) {
+function renderTrash() {
+  const items = trashTodos.filter(t => !search || matchesSearch(t));
   listEl.innerHTML = '';
-  emptyEl.hidden = todos.length > 0;
-  emptyEl.textContent = 'Trash is empty.';
+  emptyEl.hidden = items.length > 0;
+  emptyEl.textContent = trashTodos.length === 0 ? 'Trash is empty.' : 'No matches in trash.';
 
-  for (const t of todos) {
+  for (const t of items) {
     const li = document.createElement('li');
     li.className = 'item trashed' + (t.parentId ? ' sub' : '');
     li.dataset.id = t.id;
@@ -147,18 +234,31 @@ function timeAgo(ts) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-async function load() {
-  if (view === 'active') {
-    emptyEl.textContent = filter === 'all'
-      ? 'Nothing here yet.'
-      : `No ${CATEGORY_LABELS[filter] || filter} tasks.`;
-    const q = filter === 'all' ? '' : `?category=${encodeURIComponent(filter)}`;
-    const todos = await api(`/api/todos${q}`);
-    renderActive(todos || []);
-  } else {
-    const todos = await api('/api/trash');
-    renderTrash(todos || []);
-  }
+function updateCounts() {
+  const topActive = activeTodos.filter(t => !t.parentId);
+  const counts = {
+    active: activeTodos.length,
+    trash: trashTodos.length,
+    'cat-all': topActive.length,
+    'cat-home': topActive.filter(t => t.category === 'home').length,
+    'cat-work': topActive.filter(t => t.category === 'work').length,
+  };
+  document.querySelectorAll('.count').forEach(el => {
+    const v = counts[el.dataset.count];
+    el.textContent = v ? `(${v})` : '';
+  });
+}
+
+async function refresh() {
+  const [a, tr] = await Promise.all([
+    api('/api/todos'),
+    api('/api/trash'),
+  ]);
+  activeTodos = a || [];
+  trashTodos = tr || [];
+  updateCounts();
+  if (view === 'active') renderActive();
+  else renderTrash();
 }
 
 async function add(text, parentId = null, category = null) {
@@ -168,7 +268,7 @@ async function add(text, parentId = null, category = null) {
     method: 'POST',
     body: JSON.stringify(body),
   });
-  await load();
+  await refresh();
 }
 
 async function cycleCategory(t) {
@@ -178,7 +278,15 @@ async function cycleCategory(t) {
     method: 'PATCH',
     body: JSON.stringify({ category: next }),
   });
-  await load();
+  await refresh();
+}
+
+async function setDue(id, dueDate) {
+  await api(`/api/todos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ dueDate }),
+  });
+  await refresh();
 }
 
 async function toggle(t) {
@@ -186,23 +294,24 @@ async function toggle(t) {
     method: 'PATCH',
     body: JSON.stringify({ done: !t.done }),
   });
-  await load();
+  await refresh();
 }
 
-async function remove(id) {
-  await api(`/api/todos/${id}`, { method: 'DELETE' });
-  await load();
+async function remove(t) {
+  await api(`/api/todos/${t.id}`, { method: 'DELETE' });
+  await refresh();
+  showToast(`Deleted "${truncate(t.text, 40)}"`, () => restoreItem(t.id));
 }
 
 async function restoreItem(id) {
   await api(`/api/todos/${id}/restore`, { method: 'POST' });
-  await load();
+  await refresh();
 }
 
 async function purge(id) {
   if (!confirm('Delete this permanently? This cannot be undone.')) return;
   await api(`/api/trash/${id}`, { method: 'DELETE' });
-  await load();
+  await refresh();
 }
 
 async function saveText(id, text) {
@@ -210,38 +319,38 @@ async function saveText(id, text) {
     method: 'PATCH',
     body: JSON.stringify({ text }),
   });
-  await load();
+  await refresh();
 }
 
 function startEdit(li, t) {
   if (li.querySelector('.edit-input')) return;
   const textEl = li.querySelector('.text');
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'edit-input';
-  input.value = t.text;
-  input.maxLength = 500;
-  textEl.replaceWith(input);
-  input.focus();
-  input.setSelectionRange(input.value.length, input.value.length);
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'edit-input';
+  inp.value = t.text;
+  inp.maxLength = 500;
+  textEl.replaceWith(inp);
+  inp.focus();
+  inp.setSelectionRange(inp.value.length, inp.value.length);
 
   let settled = false;
   const finish = async (commit) => {
     if (settled) return;
     settled = true;
-    const next = input.value.trim();
+    const next = inp.value.trim();
     if (commit && next && next !== t.text) {
       await saveText(t.id, next);
     } else {
-      await load();
+      await refresh();
     }
   };
 
-  input.addEventListener('keydown', (e) => {
+  inp.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); finish(true); }
     else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
   });
-  input.addEventListener('blur', () => finish(true));
+  inp.addEventListener('blur', () => finish(true));
 }
 
 function startAddSub(parentLi, parent) {
@@ -275,6 +384,28 @@ function startAddSub(parentLi, parent) {
   inp.addEventListener('blur', () => finish(true));
 }
 
+function truncate(s, n) {
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+let toastTimer = null;
+function showToast(msg, onUndo) {
+  toastMsg.textContent = msg;
+  toastEl.hidden = false;
+  requestAnimationFrame(() => toastEl.classList.add('show'));
+  if (toastTimer) clearTimeout(toastTimer);
+  const dismiss = () => {
+    toastEl.classList.remove('show');
+    setTimeout(() => { toastEl.hidden = true; }, 200);
+  };
+  toastTimer = setTimeout(dismiss, 6000);
+  toastAction.onclick = async () => {
+    if (toastTimer) clearTimeout(toastTimer);
+    dismiss();
+    if (onUndo) await onUndo();
+  };
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = input.value.trim();
@@ -291,7 +422,19 @@ filtersEl.addEventListener('click', (e) => {
   filter = btn.dataset.cat;
   filtersEl.querySelectorAll('.pill').forEach(p => p.classList.toggle('active', p === btn));
   if (filter !== 'all') categorySelect.value = filter;
-  load().catch(console.error);
+  renderActive();
+});
+
+searchEl.addEventListener('input', () => {
+  search = searchEl.value.trim().toLowerCase();
+  if (view === 'active') renderActive();
+  else renderTrash();
+});
+
+hideDoneEl.addEventListener('change', () => {
+  hideDone = hideDoneEl.checked;
+  localStorage.setItem('hideDone', hideDone ? '1' : '0');
+  renderActive();
 });
 
 tabs.forEach(t => {
@@ -300,15 +443,18 @@ tabs.forEach(t => {
     tabs.forEach(x => x.classList.toggle('active', x === t));
     form.hidden = view !== 'active';
     filtersEl.hidden = view !== 'active';
+    toolbarEl.hidden = false;
+    hideDoneEl.parentElement.hidden = view !== 'active';
     trashToolbar.hidden = view !== 'trash';
-    load().catch(console.error);
+    if (view === 'active') renderActive();
+    else renderTrash();
   });
 });
 
 emptyTrashBtn.addEventListener('click', async () => {
   if (!confirm('Permanently delete everything in trash?')) return;
   await api('/api/trash', { method: 'DELETE' });
-  await load();
+  await refresh();
 });
 
-load().catch(console.error);
+refresh().catch(console.error);

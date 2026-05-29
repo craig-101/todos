@@ -31,11 +31,21 @@ function loadTodos() {
       parentId: null,
       deletedAt: null,
       category: t.parentId ? null : DEFAULT_CATEGORY,
+      dueDate: null,
       ...t,
     }));
   } catch {
     return [];
   }
+}
+
+function normalizeDueDate(v) {
+  if (v === null || v === '') return null;
+  if (typeof v !== 'string') return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+  const d = new Date(v + 'T00:00:00Z');
+  if (isNaN(d.getTime())) return undefined;
+  return v;
 }
 
 function saveTodos(todos) {
@@ -122,12 +132,18 @@ app.post('/api/todos', requireAuth, (req, res) => {
     category = (req.body.category || DEFAULT_CATEGORY).toString();
     if (!CATEGORIES.includes(category)) return res.status(400).json({ error: 'invalid category' });
   }
+  let dueDate = null;
+  if (req.body.dueDate !== undefined) {
+    dueDate = normalizeDueDate(req.body.dueDate);
+    if (dueDate === undefined) return res.status(400).json({ error: 'invalid dueDate' });
+  }
   const todo = {
     id: crypto.randomUUID(),
     text,
     done: false,
     parentId,
     category,
+    dueDate,
     createdAt: Date.now(),
     deletedAt: null,
   };
@@ -148,6 +164,11 @@ app.patch('/api/todos/:id', requireAuth, (req, res) => {
   if (typeof req.body.category === 'string' && !todo.parentId) {
     if (!CATEGORIES.includes(req.body.category)) return res.status(400).json({ error: 'invalid category' });
     todo.category = req.body.category;
+  }
+  if (req.body.dueDate !== undefined) {
+    const d = normalizeDueDate(req.body.dueDate);
+    if (d === undefined) return res.status(400).json({ error: 'invalid dueDate' });
+    todo.dueDate = d;
   }
   saveTodos(todos);
   res.json(todo);
