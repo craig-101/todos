@@ -2,11 +2,16 @@ const listEl = document.getElementById('list');
 const emptyEl = document.getElementById('empty');
 const form = document.getElementById('add-form');
 const input = document.getElementById('new-text');
+const categorySelect = document.getElementById('new-category');
+const filtersEl = document.getElementById('filters');
 const tabs = document.querySelectorAll('.tab');
 const trashToolbar = document.getElementById('trash-toolbar');
 const emptyTrashBtn = document.getElementById('empty-trash');
 
 let view = 'active';
+let filter = 'all';
+
+const CATEGORY_LABELS = { home: 'Home', work: 'Work' };
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -64,6 +69,15 @@ function renderItem(t, isSub) {
 
   li.append(check, text);
 
+  if (!isSub && t.category) {
+    const badge = document.createElement('button');
+    badge.className = `badge badge-${t.category}`;
+    badge.textContent = CATEGORY_LABELS[t.category] || t.category;
+    badge.title = 'Click to change category';
+    badge.addEventListener('click', () => cycleCategory(t));
+    li.append(badge);
+  }
+
   if (!isSub) {
     const addSub = document.createElement('button');
     addSub.className = 'icon-btn';
@@ -97,6 +111,15 @@ function renderTrash(todos) {
     text.className = 'text';
     text.textContent = t.text;
 
+    li.append(text);
+
+    if (!t.parentId && t.category) {
+      const badge = document.createElement('span');
+      badge.className = `badge badge-${t.category} static`;
+      badge.textContent = CATEGORY_LABELS[t.category] || t.category;
+      li.append(badge);
+    }
+
     const when = document.createElement('span');
     when.className = 'muted when';
     when.textContent = timeAgo(t.deletedAt);
@@ -111,7 +134,7 @@ function renderTrash(todos) {
     del.textContent = 'Delete forever';
     del.addEventListener('click', () => purge(t.id));
 
-    li.append(text, when, restore, del);
+    li.append(when, restore, del);
     listEl.append(li);
   }
 }
@@ -126,8 +149,11 @@ function timeAgo(ts) {
 
 async function load() {
   if (view === 'active') {
-    emptyEl.textContent = 'Nothing here yet.';
-    const todos = await api('/api/todos');
+    emptyEl.textContent = filter === 'all'
+      ? 'Nothing here yet.'
+      : `No ${CATEGORY_LABELS[filter] || filter} tasks.`;
+    const q = filter === 'all' ? '' : `?category=${encodeURIComponent(filter)}`;
+    const todos = await api(`/api/todos${q}`);
     renderActive(todos || []);
   } else {
     const todos = await api('/api/trash');
@@ -135,10 +161,22 @@ async function load() {
   }
 }
 
-async function add(text, parentId = null) {
+async function add(text, parentId = null, category = null) {
+  const body = { text, parentId };
+  if (category && !parentId) body.category = category;
   await api('/api/todos', {
     method: 'POST',
-    body: JSON.stringify({ text, parentId }),
+    body: JSON.stringify(body),
+  });
+  await load();
+}
+
+async function cycleCategory(t) {
+  const order = ['home', 'work'];
+  const next = order[(order.indexOf(t.category) + 1) % order.length];
+  await api(`/api/todos/${t.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ category: next }),
   });
   await load();
 }
@@ -241,9 +279,19 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
+  const category = categorySelect.value;
   input.value = '';
-  await add(text);
+  await add(text, null, category);
   input.focus();
+});
+
+filtersEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.pill');
+  if (!btn) return;
+  filter = btn.dataset.cat;
+  filtersEl.querySelectorAll('.pill').forEach(p => p.classList.toggle('active', p === btn));
+  if (filter !== 'all') categorySelect.value = filter;
+  load().catch(console.error);
 });
 
 tabs.forEach(t => {
@@ -251,6 +299,7 @@ tabs.forEach(t => {
     view = t.dataset.view;
     tabs.forEach(x => x.classList.toggle('active', x === t));
     form.hidden = view !== 'active';
+    filtersEl.hidden = view !== 'active';
     trashToolbar.hidden = view !== 'trash';
     load().catch(console.error);
   });

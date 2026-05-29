@@ -91,12 +91,90 @@ h1 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 .add-form {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .add-form input {
   flex: 1;
 }
+
+.select {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%238a90a0' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124,92,255,0.18);
+}
+
+.filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.pill {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pill:hover { color: var(--text); background: var(--surface); }
+
+.pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.badge.static { cursor: default; }
+
+.badge-home {
+  background: rgba(65,201,138,0.15);
+  color: #5fd6a3;
+  border-color: rgba(65,201,138,0.3);
+}
+
+.badge-work {
+  background: rgba(124,92,255,0.18);
+  color: #a99cff;
+  border-color: rgba(124,92,255,0.35);
+}
+
+.badge:not(.static):hover { filter: brightness(1.2); }
 
 input[type="text"], input[type="password"] {
   width: 100%;
@@ -337,6 +415,8 @@ button.ghost:hover { color: var(--text); background: var(--surface); }
 
 @media (max-width: 480px) {
   .container { margin-top: 20px; }
-  .add-form { flex-direction: column; }
-  .add-form button { width: 100%; }
+  .add-form { flex-wrap: wrap; }
+  .add-form input { flex: 1 1 100%; }
+  .select { flex: 1; }
+  .add-form button { flex: 1; }
 }

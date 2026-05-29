@@ -21,12 +21,16 @@ const DATA_FILE = path.join(DATA_DIR, 'todos.json');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]');
 
+const CATEGORIES = ['home', 'work'];
+const DEFAULT_CATEGORY = 'home';
+
 function loadTodos() {
   try {
     const todos = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     return todos.map(t => ({
       parentId: null,
       deletedAt: null,
+      category: t.parentId ? null : DEFAULT_CATEGORY,
       ...t,
     }));
   } catch {
@@ -86,7 +90,12 @@ app.get('/', requireAuth, (req, res) => {
 });
 
 app.get('/api/todos', requireAuth, (req, res) => {
-  res.json(loadTodos().filter(t => !t.deletedAt));
+  const todos = loadTodos().filter(t => !t.deletedAt);
+  const cat = req.query.category;
+  if (!cat || cat === 'all') return res.json(todos);
+  if (!CATEGORIES.includes(cat)) return res.status(400).json({ error: 'invalid category' });
+  const topIds = new Set(todos.filter(t => !t.parentId && t.category === cat).map(t => t.id));
+  res.json(todos.filter(t => topIds.has(t.id) || topIds.has(t.parentId)));
 });
 
 app.get('/api/trash', requireAuth, (req, res) => {
@@ -108,11 +117,17 @@ app.post('/api/todos', requireAuth, (req, res) => {
     if (parent.parentId) return res.status(400).json({ error: 'only one level of nesting' });
     parentId = parent.id;
   }
+  let category = null;
+  if (!parentId) {
+    category = (req.body.category || DEFAULT_CATEGORY).toString();
+    if (!CATEGORIES.includes(category)) return res.status(400).json({ error: 'invalid category' });
+  }
   const todo = {
     id: crypto.randomUUID(),
     text,
     done: false,
     parentId,
+    category,
     createdAt: Date.now(),
     deletedAt: null,
   };
@@ -129,6 +144,10 @@ app.patch('/api/todos/:id', requireAuth, (req, res) => {
   if (typeof req.body.text === 'string') {
     const text = req.body.text.trim();
     if (text) todo.text = text.slice(0, 500);
+  }
+  if (typeof req.body.category === 'string' && !todo.parentId) {
+    if (!CATEGORIES.includes(req.body.category)) return res.status(400).json({ error: 'invalid category' });
+    todo.category = req.body.category;
   }
   saveTodos(todos);
   res.json(todo);
