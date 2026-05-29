@@ -37,6 +37,44 @@ h1 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
   top: 0;
   background: rgba(15,17,21,0.7);
   backdrop-filter: blur(10px);
+  z-index: 10;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status.offline { color: #ff8189; border-color: rgba(239,79,91,0.4); background: rgba(239,79,91,0.1); }
+.status.pending { color: #f0c674; border-color: rgba(240,198,116,0.4); background: rgba(240,198,116,0.1); }
+.status.syncing { color: #6aa6ff; border-color: rgba(106,166,255,0.4); background: rgba(106,166,255,0.1); }
+.status.syncing::before { animation: pulse 1.2s ease-in-out infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 .container {

@@ -13,17 +13,136 @@ const emptyTrashBtn = document.getElementById('empty-trash');
 const toastEl = document.getElementById('toast');
 const toastMsg = document.getElementById('toast-msg');
 const toastAction = document.getElementById('toast-action');
+const statusEl = document.getElementById('status');
+
+const STATE_KEY = 'todosState.v1';
+const HIDE_DONE_KEY = 'hideDone';
+
+const state = loadState();
 
 let view = 'active';
 let filter = 'all';
 let search = '';
-let hideDone = localStorage.getItem('hideDone') === '1';
+let hideDone = localStorage.getItem(HIDE_DONE_KEY) === '1';
 hideDoneEl.checked = hideDone;
 
-let activeTodos = [];
-let trashTodos = [];
-
 const CATEGORY_LABELS = { home: 'Home', work: 'Work' };
+
+let online = navigator.onLine;
+let syncing = false;
+
+// ---------- state persistence ----------
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) return { todos: [], outbox: [] };
+    const parsed = JSON.parse(raw);
+    return { todos: parsed.todos || [], outbox: parsed.outbox || [] };
+  } catch {
+    return { todos: [], outbox: [] };
+  }
+}
+
+function saveState() {
+  localStorage.setItem(STATE_KEY, JSON.stringify(state));
+}
+
+// ---------- network ----------
+
+async function rawFetch(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (res.status === 401) {
+    location.href = '/login';
+    throw new Error('unauthorized');
+  }
+  if (!res.ok && res.status !== 204) throw new Error('http ' + res.status);
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+async function pull() {
+  const [a, tr] = await Promise.all([
+    rawFetch('/api/todos'),
+    rawFetch('/api/trash'),
+  ]);
+  state.todos = [...(a || []), ...(tr || [])];
+  saveState();
+}
+
+function enqueue(op) {
+  state.outbox.push(op);
+  saveState();
+  updateStatus();
+  flush();
+}
+
+async function flush() {
+  if (syncing || state.outbox.length === 0) return;
+  syncing = true;
+  updateStatus();
+  try {
+    while (state.outbox.length) {
+      const op = state.outbox[0];
+      try {
+        await rawFetch(op.path, {
+          method: op.method,
+          body: op.body ? JSON.stringify(op.body) : undefined,
+        });
+      } catch (err) {
+        if (err.message === 'unauthorized') return;
+        online = false;
+        updateStatus();
+        return;
+      }
+      state.outbox.shift();
+      saveState();
+      updateStatus();
+    }
+    try {
+      await pull();
+      render();
+    } catch {
+      online = false;
+    }
+    online = true;
+  } finally {
+    syncing = false;
+    updateStatus();
+  }
+}
+
+// ---------- status indicator ----------
+
+function updateStatus() {
+  const pending = state.outbox.length;
+  if (syncing) {
+    statusEl.hidden = false;
+    statusEl.className = 'status syncing';
+    statusEl.textContent = pending ? `Syncing ${pending}…` : 'Syncing…';
+    return;
+  }
+  if (!online) {
+    statusEl.hidden = false;
+    statusEl.className = 'status offline';
+    statusEl.textContent = pending ? `Offline · ${pending} pending` : 'Offline';
+    return;
+  }
+  if (pending) {
+    statusEl.hidden = false;
+    statusEl.className = 'status pending';
+    statusEl.textContent = `${pending} pending`;
+    return;
+  }
+  statusEl.hidden = true;
+  statusEl.className = 'status';
+  statusEl.textContent = '';
+}
+
+// ---------- date helpers ----------
 
 function todayISO() {
   const d = new Date();
@@ -50,18 +169,11 @@ function isOverdue(t) {
   return t.dueDate && !t.done && t.dueDate < todayISO();
 }
 
-async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
-  if (res.status === 401) {
-    location.href = '/login';
-    return;
-  }
-  if (!res.ok && res.status !== 204) throw new Error('request failed');
-  if (res.status === 204) return null;
-  return res.json();
+// ---------- selectors ----------
+
+function activeTodos() { return state.todos.filter(t => !t.deletedAt); }
+function trashTodos() {
+  return state.todos.filter(t => t.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
 }
 
 function matchesSearch(t) {
@@ -70,10 +182,11 @@ function matchesSearch(t) {
 }
 
 function visibleActive() {
-  const top = activeTodos.filter(t => !t.parentId);
-  const subs = activeTodos.filter(t => t.parentId);
+  const active = activeTodos();
+  const top = active.filter(t => !t.parentId);
   const subsByParent = new Map();
-  for (const s of subs) {
+  for (const s of active) {
+    if (!s.parentId) continue;
     if (!subsByParent.has(s.parentId)) subsByParent.set(s.parentId, []);
     subsByParent.get(s.parentId).push(s);
   }
@@ -96,11 +209,19 @@ function visibleActive() {
   return result;
 }
 
+// ---------- rendering ----------
+
+function render() {
+  updateCounts();
+  if (view === 'active') renderActive();
+  else renderTrash();
+}
+
 function renderActive() {
   const items = visibleActive();
   listEl.innerHTML = '';
   emptyEl.hidden = items.length > 0;
-  emptyEl.textContent = activeTodos.length === 0
+  emptyEl.textContent = activeTodos().length === 0
     ? 'Nothing here yet.'
     : 'No tasks match.';
   for (const { todo, isSub } of items) {
@@ -126,16 +247,13 @@ function renderItem(t, isSub) {
 
   li.append(check, text);
 
-  // Due date
   const due = document.createElement('label');
   due.className = 'due' + (t.dueDate ? ' set' : '') + (isOverdue(t) ? ' overdue' : '');
   const dueInput = document.createElement('input');
   dueInput.type = 'date';
   dueInput.value = t.dueDate || '';
   dueInput.title = t.dueDate ? 'Change due date' : 'Set due date';
-  dueInput.addEventListener('change', async () => {
-    await setDue(t.id, dueInput.value || null);
-  });
+  dueInput.addEventListener('change', () => setDue(t.id, dueInput.value || null));
   const dueLabel = document.createElement('span');
   dueLabel.className = 'due-label';
   dueLabel.textContent = t.dueDate ? formatDue(t.dueDate) : 'Due';
@@ -184,10 +302,10 @@ function renderItem(t, isSub) {
 }
 
 function renderTrash() {
-  const items = trashTodos.filter(t => !search || matchesSearch(t));
+  const items = trashTodos().filter(t => !search || matchesSearch(t));
   listEl.innerHTML = '';
   emptyEl.hidden = items.length > 0;
-  emptyEl.textContent = trashTodos.length === 0 ? 'Trash is empty.' : 'No matches in trash.';
+  emptyEl.textContent = trashTodos().length === 0 ? 'Trash is empty.' : 'No matches in trash.';
 
   for (const t of items) {
     const li = document.createElement('li');
@@ -235,10 +353,11 @@ function timeAgo(ts) {
 }
 
 function updateCounts() {
-  const topActive = activeTodos.filter(t => !t.parentId);
+  const active = activeTodos();
+  const topActive = active.filter(t => !t.parentId);
   const counts = {
-    active: activeTodos.length,
-    trash: trashTodos.length,
+    active: active.length,
+    trash: trashTodos().length,
     'cat-all': topActive.length,
     'cat-home': topActive.filter(t => t.category === 'home').length,
     'cat-work': topActive.filter(t => t.category === 'work').length,
@@ -249,78 +368,110 @@ function updateCounts() {
   });
 }
 
-async function refresh() {
-  const [a, tr] = await Promise.all([
-    api('/api/todos'),
-    api('/api/trash'),
-  ]);
-  activeTodos = a || [];
-  trashTodos = tr || [];
-  updateCounts();
-  if (view === 'active') renderActive();
-  else renderTrash();
-}
+// ---------- mutations (local-first) ----------
 
-async function add(text, parentId = null, category = null) {
-  const body = { text, parentId };
-  if (category && !parentId) body.category = category;
-  await api('/api/todos', {
+function add(text, parentId = null, category = null) {
+  const id = crypto.randomUUID();
+  let cat = null;
+  if (!parentId) {
+    cat = category || 'home';
+  } else {
+    const parent = state.todos.find(t => t.id === parentId);
+    if (!parent || parent.deletedAt) return;
+    if (parent.parentId) return;
+  }
+  const todo = {
+    id,
+    text,
+    done: false,
+    parentId: parentId || null,
+    category: cat,
+    dueDate: null,
+    createdAt: Date.now(),
+    deletedAt: null,
+  };
+  state.todos.unshift(todo);
+  saveState();
+  render();
+  enqueue({
     method: 'POST',
-    body: JSON.stringify(body),
+    path: '/api/todos',
+    body: { id, text, parentId: parentId || undefined, category: cat || undefined },
   });
-  await refresh();
 }
 
-async function cycleCategory(t) {
+function cycleCategory(t) {
   const order = ['home', 'work'];
   const next = order[(order.indexOf(t.category) + 1) % order.length];
-  await api(`/api/todos/${t.id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ category: next }),
-  });
-  await refresh();
+  t.category = next;
+  saveState();
+  render();
+  enqueue({ method: 'PATCH', path: `/api/todos/${t.id}`, body: { category: next } });
 }
 
-async function setDue(id, dueDate) {
-  await api(`/api/todos/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ dueDate }),
-  });
-  await refresh();
+function setDue(id, dueDate) {
+  const t = state.todos.find(x => x.id === id);
+  if (!t) return;
+  t.dueDate = dueDate;
+  saveState();
+  render();
+  enqueue({ method: 'PATCH', path: `/api/todos/${id}`, body: { dueDate } });
 }
 
-async function toggle(t) {
-  await api(`/api/todos/${t.id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ done: !t.done }),
-  });
-  await refresh();
+function toggle(t) {
+  t.done = !t.done;
+  saveState();
+  render();
+  enqueue({ method: 'PATCH', path: `/api/todos/${t.id}`, body: { done: t.done } });
 }
 
-async function remove(t) {
-  await api(`/api/todos/${t.id}`, { method: 'DELETE' });
-  await refresh();
+function remove(t) {
+  const now = Date.now();
+  t.deletedAt = now;
+  for (const c of state.todos) {
+    if (c.parentId === t.id && !c.deletedAt) c.deletedAt = now;
+  }
+  saveState();
+  render();
+  enqueue({ method: 'DELETE', path: `/api/todos/${t.id}` });
   showToast(`Deleted "${truncate(t.text, 40)}"`, () => restoreItem(t.id));
 }
 
-async function restoreItem(id) {
-  await api(`/api/todos/${id}/restore`, { method: 'POST' });
-  await refresh();
+function restoreItem(id) {
+  const t = state.todos.find(x => x.id === id);
+  if (!t) return;
+  t.deletedAt = null;
+  saveState();
+  render();
+  enqueue({ method: 'POST', path: `/api/todos/${id}/restore` });
 }
 
-async function purge(id) {
+function purge(id) {
   if (!confirm('Delete this permanently? This cannot be undone.')) return;
-  await api(`/api/trash/${id}`, { method: 'DELETE' });
-  await refresh();
+  state.todos = state.todos.filter(t => t.id !== id);
+  saveState();
+  render();
+  enqueue({ method: 'DELETE', path: `/api/trash/${id}` });
 }
 
-async function saveText(id, text) {
-  await api(`/api/todos/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ text }),
-  });
-  await refresh();
+function emptyTrashLocal() {
+  if (!confirm('Permanently delete everything in trash?')) return;
+  state.todos = state.todos.filter(t => !t.deletedAt);
+  saveState();
+  render();
+  enqueue({ method: 'DELETE', path: '/api/trash' });
 }
+
+function saveText(id, text) {
+  const t = state.todos.find(x => x.id === id);
+  if (!t) return;
+  t.text = text;
+  saveState();
+  render();
+  enqueue({ method: 'PATCH', path: `/api/todos/${id}`, body: { text } });
+}
+
+// ---------- inline editing ----------
 
 function startEdit(li, t) {
   if (li.querySelector('.edit-input')) return;
@@ -335,15 +486,12 @@ function startEdit(li, t) {
   inp.setSelectionRange(inp.value.length, inp.value.length);
 
   let settled = false;
-  const finish = async (commit) => {
+  const finish = (commit) => {
     if (settled) return;
     settled = true;
     const next = inp.value.trim();
-    if (commit && next && next !== t.text) {
-      await saveText(t.id, next);
-    } else {
-      await refresh();
-    }
+    if (commit && next && next !== t.text) saveText(t.id, next);
+    else render();
   };
 
   inp.addEventListener('keydown', (e) => {
@@ -370,11 +518,11 @@ function startAddSub(parentLi, parent) {
   inp.focus();
 
   let settled = false;
-  const finish = async (commit) => {
+  const finish = (commit) => {
     if (settled) return;
     settled = true;
     const text = inp.value.trim();
-    if (commit && text) await add(text, parent.id);
+    if (commit && text) add(text, parent.id);
     else row.remove();
   };
   inp.addEventListener('keydown', (e) => {
@@ -388,6 +536,8 @@ function truncate(s, n) {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
+// ---------- toast ----------
+
 let toastTimer = null;
 function showToast(msg, onUndo) {
   toastMsg.textContent = msg;
@@ -399,20 +549,22 @@ function showToast(msg, onUndo) {
     setTimeout(() => { toastEl.hidden = true; }, 200);
   };
   toastTimer = setTimeout(dismiss, 6000);
-  toastAction.onclick = async () => {
+  toastAction.onclick = () => {
     if (toastTimer) clearTimeout(toastTimer);
     dismiss();
-    if (onUndo) await onUndo();
+    if (onUndo) onUndo();
   };
 }
 
-form.addEventListener('submit', async (e) => {
+// ---------- events ----------
+
+form.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
   const category = categorySelect.value;
   input.value = '';
-  await add(text, null, category);
+  add(text, null, category);
   input.focus();
 });
 
@@ -433,7 +585,7 @@ searchEl.addEventListener('input', () => {
 
 hideDoneEl.addEventListener('change', () => {
   hideDone = hideDoneEl.checked;
-  localStorage.setItem('hideDone', hideDone ? '1' : '0');
+  localStorage.setItem(HIDE_DONE_KEY, hideDone ? '1' : '0');
   renderActive();
 });
 
@@ -443,18 +595,43 @@ tabs.forEach(t => {
     tabs.forEach(x => x.classList.toggle('active', x === t));
     form.hidden = view !== 'active';
     filtersEl.hidden = view !== 'active';
-    toolbarEl.hidden = false;
     hideDoneEl.parentElement.hidden = view !== 'active';
     trashToolbar.hidden = view !== 'trash';
-    if (view === 'active') renderActive();
-    else renderTrash();
+    render();
   });
 });
 
-emptyTrashBtn.addEventListener('click', async () => {
-  if (!confirm('Permanently delete everything in trash?')) return;
-  await api('/api/trash', { method: 'DELETE' });
-  await refresh();
+emptyTrashBtn.addEventListener('click', () => emptyTrashLocal());
+
+window.addEventListener('online', () => {
+  online = true;
+  updateStatus();
+  flush();
+});
+window.addEventListener('offline', () => {
+  online = false;
+  updateStatus();
 });
 
-refresh().catch(console.error);
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+// ---------- boot ----------
+
+render();
+updateStatus();
+
+(async () => {
+  await flush();
+  if (state.outbox.length === 0) {
+    try {
+      await pull();
+      online = true;
+      render();
+    } catch {
+      online = false;
+    }
+    updateStatus();
+  }
+})();

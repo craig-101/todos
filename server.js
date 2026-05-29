@@ -115,11 +115,21 @@ app.get('/api/trash', requireAuth, (req, res) => {
   res.json(trashed);
 });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 app.post('/api/todos', requireAuth, (req, res) => {
   const text = (req.body.text || '').toString().trim();
   if (!text) return res.status(400).json({ error: 'text required' });
   if (text.length > 500) return res.status(400).json({ error: 'too long' });
   const todos = loadTodos();
+  let id = req.body.id;
+  if (id !== undefined) {
+    if (typeof id !== 'string' || !UUID_RE.test(id)) return res.status(400).json({ error: 'invalid id' });
+    const existing = todos.find(t => t.id === id);
+    if (existing) return res.status(200).json(existing);
+  } else {
+    id = crypto.randomUUID();
+  }
   let parentId = null;
   if (req.body.parentId) {
     const parent = todos.find(t => t.id === req.body.parentId && !t.deletedAt);
@@ -138,7 +148,7 @@ app.post('/api/todos', requireAuth, (req, res) => {
     if (dueDate === undefined) return res.status(400).json({ error: 'invalid dueDate' });
   }
   const todo = {
-    id: crypto.randomUUID(),
+    id,
     text,
     done: false,
     parentId,

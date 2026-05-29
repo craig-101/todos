@@ -16,9 +16,12 @@
 <body>
   <header class="topbar">
     <h1>todos</h1>
-    <form method="post" action="/logout">
-      <button type="submit" class="ghost">Sign out</button>
-    </form>
+    <div class="topbar-right">
+      <span id="status" class="status" hidden></span>
+      <form method="post" action="/logout">
+        <button type="submit" class="ghost">Sign out</button>
+      </form>
+    </div>
   </header>
 
   <main class="container">
