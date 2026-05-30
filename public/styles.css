@@ -396,6 +396,31 @@ button.ghost:hover { color: var(--text); background: var(--surface); }
   color: var(--danger);
 }
 
+.progress {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  min-width: 46px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background:
+    linear-gradient(to right, rgba(124,92,255,0.4) calc(var(--p, 0) * 1%), transparent calc(var(--p, 0) * 1%)),
+    var(--bg);
+  white-space: nowrap;
+  transition: background 200ms ease;
+}
+
+.progress.complete {
+  background: rgba(65,201,138,0.22);
+  border-color: rgba(65,201,138,0.5);
+  color: #5fd6a3;
+}
+
 .due {
   position: relative;
   display: inline-flex;

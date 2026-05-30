@@ -247,6 +247,20 @@ function renderItem(t, isSub) {
 
   li.append(check, text);
 
+  if (!isSub) {
+    const subs = state.todos.filter(c => c.parentId === t.id && !c.deletedAt);
+    if (subs.length > 0) {
+      const done = subs.filter(c => c.done).length;
+      const pct = Math.round((done / subs.length) * 100);
+      const prog = document.createElement('span');
+      prog.className = 'progress' + (done === subs.length ? ' complete' : '');
+      prog.style.setProperty('--p', pct);
+      prog.textContent = `${done}/${subs.length}`;
+      prog.title = `${pct}% complete`;
+      li.append(prog);
+    }
+  }
+
   const due = document.createElement('label');
   due.className = 'due' + (t.dueDate ? ' set' : '') + (isOverdue(t) ? ' overdue' : '');
   const dueInput = document.createElement('input');
