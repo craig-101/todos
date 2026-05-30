@@ -1,4 +1,4 @@
-const CACHE = 'todos-v1';
+const CACHE = 'todos-v2';
 const SHELL = [
   '/',
   '/login',
@@ -34,20 +34,12 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.startsWith('/api/') || url.pathname === '/logout') return;
 
   e.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) {
-        fetch(req).then((r) => {
-          if (r.ok) caches.open(CACHE).then((c) => c.put(req, r));
-        }).catch(() => {});
-        return cached;
+    fetch(req).then((r) => {
+      if (r.ok) {
+        const copy = r.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
       }
-      return fetch(req).then((r) => {
-        if (r.ok) {
-          const copy = r.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-        }
-        return r;
-      }).catch(() => caches.match('/'));
-    })
+      return r;
+    }).catch(() => caches.match(req).then((c) => c || caches.match('/')))
   );
 });
