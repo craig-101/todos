@@ -24,6 +24,7 @@ Open http://localhost:3000.
    - `AUTH_PASS` — your password
    - `SESSION_SECRET` — a long random string
    - `NODE_ENV` — `production`
+   - `API_TOKEN` — (optional) a long random string; lets scripts call `/api/*` with `Authorization: Bearer <API_TOKEN>` instead of logging in
 5. (Optional, recommended) Add a **Persistent Disk** so todos survive restarts:
    - Mount path: `/data`
    - Then add env var `DATA_DIR=/data`

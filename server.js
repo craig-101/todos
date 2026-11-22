@@ -10,6 +10,9 @@ const PORT = process.env.PORT || 3000;
 const AUTH_USER = process.env.AUTH_USER;
 const AUTH_PASS = process.env.AUTH_PASS;
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+// Optional: lets scripts (e.g. a daily routine) call /api/* with
+// `Authorization: Bearer <API_TOKEN>` instead of logging in. Unset = disabled.
+const API_TOKEN = process.env.API_TOKEN || '';
 
 if (!AUTH_USER || !AUTH_PASS) {
   console.error('AUTH_USER and AUTH_PASS must be set in environment.');
@@ -69,6 +72,10 @@ app.use(session({
 
 function requireAuth(req, res, next) {
   if (req.session && req.session.authed) return next();
+  if (API_TOKEN && req.path.startsWith('/api/')) {
+    const m = /^Bearer (.+)$/.exec(req.get('authorization') || '');
+    if (m && safeEqual(m[1], API_TOKEN)) return next();
+  }
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'unauthorized' });
   res.redirect('/login');
 }
